@@ -5,6 +5,7 @@ import { apiCalc, apiCreateHand } from "@/lib/api";
 import type { CalcResponse, Fact, ValidationError } from "@/lib/types";
 
 const FU_PRESETS = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
+const HAN_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
 
 const selectClassName =
   "cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-white px-3 py-2 pr-10 text-sm transition-colors hover:border-zinc-300 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200";
@@ -171,15 +172,20 @@ export default function CalcPage() {
 
           <label className="block">
             <div className="text-sm font-medium">翻</div>
-            <input
-              className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2"
-              type="number"
-              min={0}
+            <select
+              className={`mt-2 w-full ${selectClassName}`}
+              style={selectStyle}
               value={fact.han}
               onChange={(e) =>
                 setFact((f) => ({ ...f, han: Number(e.target.value) }))
               }
-            />
+            >
+              {HAN_OPTIONS.map((han) => (
+                <option key={han} value={han}>
+                  {han}翻
+                </option>
+              ))}
+            </select>
             <div className="mt-1 text-xs text-zinc-500">
               13翻以上は仕様により三倍満止まり（数え役満なし）
             </div>
