@@ -18,9 +18,6 @@ CREATE TABLE IF NOT EXISTS hands (
 CREATE INDEX IF NOT EXISTS idx_hands_user_created_at ON hands(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_hands_user_memo ON hands(user_id, memo);
 "#;
-    match db {
-        DbPool::Any(p) => sqlx::query(SQL).execute(p).await?,
-        DbPool::Pg(p) => sqlx::query(SQL).execute(p).await?,
-    }
+    sqlx::query(SQL).execute(&db.0).await?;
     Ok(())
 }

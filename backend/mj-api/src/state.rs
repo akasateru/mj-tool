@@ -1,4 +1,4 @@
-use sqlx::{AnyPool, PgPool};
+use sqlx::AnyPool;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -6,11 +6,8 @@ pub struct AppState {
     pub calc_version: String,
 }
 
-/// SQLite（ローカル）と Postgres（Shuttle）の両方に対応するプール。
+/// SQLite（ローカル）と Postgres（Any 経由）の両方に対応するプール。
 #[derive(Clone)]
-pub enum DbPool {
-    Any(AnyPool),
-    Pg(PgPool),
-}
+pub struct DbPool(pub AnyPool);
 
 pub const DEFAULT_DB_URL: &str = "sqlite://./mj.sqlite?mode=rwc";

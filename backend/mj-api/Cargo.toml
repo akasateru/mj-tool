@@ -5,8 +5,6 @@ edition = "2021"
 
 [features]
 default = []
-# Shuttle にバックエンドのみデプロイ。DB は Supabase を使うため shuttle-shared-db は使わない。
-shuttle = ["dep:shuttle-runtime", "dep:shuttle-axum"]
 
 [dependencies]
 axum = { version = "0.8", features = ["macros", "json"] }
@@ -22,6 +20,3 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "macros", "any", "sqlite"
 anyhow = "1"
 
 mj-domain = { path = "../mj-domain" }
-
-shuttle-runtime = { version = "0.54", optional = true }
-shuttle-axum = { version = "0.54", optional = true }
