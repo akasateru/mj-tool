@@ -1,0 +1,57 @@
+# Rust (Cargo)
+backend/target/
+
+# SQLite (ローカル用DB)
+*.sqlite
+*.sqlite-journal
+*.db
+
+# 環境変数
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ログ
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Node
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Next.js
+.next/
+out/
+build/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# テスト
+coverage/
+
+# その他
+*.pem
+
+# Supabase ローカル
+.supabase/
+
+# IDE / エディタ
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
