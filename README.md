@@ -12,6 +12,8 @@ cd backend && cargo run -p mj-api    # 別ターミナルで
 cd frontend && npm run dev          # 別ターミナルで
 ```
 
+**本番**: [https://mj-tool.vercel.app/](https://mj-tool.vercel.app/)（Vercel）。手順は [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md) を参照。API は Shuttle や Render など別ホストを想定しています。
+
 ## 麻雀ルールについて
 
 卓によってルールが揺れるので、このプロジェクトでは次のように固定しています。
