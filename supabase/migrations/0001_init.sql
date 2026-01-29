@@ -1,4 +1,4 @@
--- Supabase(Postgres)用スキーマ案（MVP）
+-- Supabase(Postgres)用スキーマ案
 -- - hands: Fact/結果の保存（calc_version, rule_set_id）
 -- - games / hand_attachments / ai_comments は拡張で追加予定
 
