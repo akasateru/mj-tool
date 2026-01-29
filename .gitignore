@@ -11,6 +11,9 @@ backend/target/
 .env.*
 !.env.example
 
+# Shuttle（Secrets をリポジトリに含めない）
+Secrets*.toml
+
 # OS
 .DS_Store
 Thumbs.db

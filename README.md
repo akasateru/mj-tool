@@ -12,7 +12,7 @@ cd backend && cargo run -p mj-api    # 別ターミナルで
 cd frontend && npm run dev          # 別ターミナルで
 ```
 
-**本番**: [https://mj-tool.vercel.app/](https://mj-tool.vercel.app/)（Vercel）。手順は [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md) を参照。API は Shuttle や Render など別ホストを想定しています。
+**本番**: [https://mj-tool.vercel.app/](https://mj-tool.vercel.app/)（Vercel）。フロントは Vercel、API は Shuttle（DB は Supabase）を想定しています。手順は [DEPLOY_SHUTTLE.md](./DEPLOY_SHUTTLE.md)（API）を参照。
 
 ## 麻雀ルールについて
 

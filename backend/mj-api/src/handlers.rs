@@ -15,6 +15,74 @@ use crate::models::{
 };
 use crate::state::AppState;
 
+fn row_to_hand_summary<R: sqlx::Row>(row: &R) -> Option<HandSummary>
+where
+    for<'c> R: sqlx::RowIndex<&'c str>,
+{
+    let id: String = row.try_get("id").ok()?;
+    let created_at: String = row.try_get("created_at").ok()?;
+    let result_json: String = row.try_get("result_json").ok()?;
+    let memo: Option<String> = row.try_get("memo").ok().flatten();
+    let tags_json: Option<String> = row.try_get("tags_json").ok().flatten();
+    let id = Uuid::parse_str(&id).ok()?;
+    let created_at = OffsetDateTime::parse(
+        &created_at,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .ok()?;
+    let result: CalcResult = serde_json::from_str(&result_json).ok()?;
+    let tags: Vec<String> = tags_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    Some(HandSummary {
+        id,
+        created_at,
+        display_hand_points: result.display_hand_points.clone(),
+        total_to_winner: result.totals.total_to_winner,
+        memo,
+        tags,
+    })
+}
+
+fn row_to_hand_record<R: sqlx::Row>(row: &R) -> Option<HandRecord>
+where
+    for<'c> R: sqlx::RowIndex<&'c str>,
+{
+    let id: String = row.try_get("id").ok()?;
+    let user_id: String = row.try_get("user_id").ok()?;
+    let created_at: String = row.try_get("created_at").ok()?;
+    let rule_set_id: String = row.try_get("rule_set_id").ok()?;
+    let calc_version: String = row.try_get("calc_version").ok()?;
+    let fact_json: String = row.try_get("fact_json").ok()?;
+    let result_json: String = row.try_get("result_json").ok()?;
+    let memo: Option<String> = row.try_get("memo").ok().flatten();
+    let tags_json: Option<String> = row.try_get("tags_json").ok().flatten();
+    let id = Uuid::parse_str(&id).ok()?;
+    let created_at = OffsetDateTime::parse(
+        &created_at,
+        &time::format_description::well_known::Rfc3339,
+    )
+    .ok()?;
+    let fact: Fact = serde_json::from_str(&fact_json).ok()?;
+    let result: CalcResult = serde_json::from_str(&result_json).ok()?;
+    let tags: Vec<String> = tags_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+    Some(HandRecord {
+        id,
+        user_id,
+        created_at,
+        rule_set_id,
+        calc_version,
+        fact,
+        result,
+        memo,
+        tags,
+    })
+}
+
 pub async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "ok": true }))
 }
@@ -70,23 +138,45 @@ pub async fn create_hand(
     let result_json = serde_json::to_string(&result).unwrap();
     let tags_json = serde_json::to_string(&tags).unwrap();
 
-    if let Err(e) = sqlx::query(
-        r#"
+    const INSERT_SQLITE: &str = r#"
 INSERT INTO hands (id, user_id, created_at, rule_set_id, calc_version, fact_json, result_json, memo, tags_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-"#,
-    )
-    .bind(id.to_string())
-    .bind(&user_id)
-    .bind(created_at.format(&time::format_description::well_known::Rfc3339).unwrap())
-    .bind(&result.rule_set_id)
-    .bind(&state.calc_version)
-    .bind(fact_json)
-    .bind(result_json)
-    .bind(req.memo.clone())
-    .bind(tags_json)
-    .execute(&state.db)
-    .await
+"#;
+    const INSERT_PG: &str = r#"
+INSERT INTO hands (id, user_id, created_at, rule_set_id, calc_version, fact_json, result_json, memo, tags_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+"#;
+    let exec = match &state.db {
+        crate::state::DbPool::Any(p) => {
+            sqlx::query(INSERT_SQLITE)
+                .bind(id.to_string())
+                .bind(&user_id)
+                .bind(created_at.format(&time::format_description::well_known::Rfc3339).unwrap())
+                .bind(&result.rule_set_id)
+                .bind(&state.calc_version)
+                .bind(&fact_json)
+                .bind(&result_json)
+                .bind(req.memo.clone())
+                .bind(&tags_json)
+                .execute(p)
+                .await
+        }
+        crate::state::DbPool::Pg(p) => {
+            sqlx::query(INSERT_PG)
+                .bind(id.to_string())
+                .bind(&user_id)
+                .bind(created_at.format(&time::format_description::well_known::Rfc3339).unwrap())
+                .bind(&result.rule_set_id)
+                .bind(&state.calc_version)
+                .bind(&fact_json)
+                .bind(&result_json)
+                .bind(req.memo.clone())
+                .bind(&tags_json)
+                .execute(p)
+                .await
+        }
+    };
+    if let Err(e) = exec
     {
         tracing::error!(error = ?e, "failed to insert hand");
         return (
@@ -122,72 +212,74 @@ pub async fn list_hands(
     let limit = q.limit.unwrap_or(50).min(200) as i64;
     let keyword = q.q.unwrap_or_default();
 
-    let mut query = String::from(
-        r#"
-SELECT id, created_at, result_json, memo, tags_json
-FROM hands
-WHERE user_id = ?
-"#,
-    );
-    let mut binds: Vec<String> = vec![];
-    if !keyword.is_empty() {
-        query.push_str("  AND (memo LIKE ? OR tags_json LIKE ?)\n");
-        let like = format!("%{}%", keyword);
-        binds.push(like.clone());
-        binds.push(like);
-    }
-    query.push_str("ORDER BY created_at DESC\nLIMIT ?\n");
-
-    let mut qx = sqlx::query(&query).bind(&user_id);
-    for b in binds {
-        qx = qx.bind(b);
-    }
-    let rows = match qx.bind(limit).fetch_all(&state.db).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!(error = ?e, "failed to list hands");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "db_error" })),
-            )
-                .into_response();
+    let summaries: Vec<HandSummary> = match &state.db {
+        crate::state::DbPool::Any(p) => {
+            let mut query = String::from(
+                r#"SELECT id, created_at, result_json, memo, tags_json FROM hands WHERE user_id = ?"#,
+            );
+            if !keyword.is_empty() {
+                query.push_str(" AND (memo LIKE ? OR tags_json LIKE ?)");
+            }
+            query.push_str(" ORDER BY created_at DESC LIMIT ?");
+            let mut qx = sqlx::query(&query).bind(&user_id);
+            if !keyword.is_empty() {
+                let like = format!("%{}%", keyword);
+                qx = qx.bind(&like).bind(&like);
+            }
+            let rows = match qx.bind(limit).fetch_all(p).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to list hands");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            rows.iter().filter_map(row_to_hand_summary).collect()
+        }
+        crate::state::DbPool::Pg(p) => {
+            let query = if keyword.is_empty() {
+                "SELECT id, created_at, result_json, memo, tags_json FROM hands WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2"
+            } else {
+                "SELECT id, created_at, result_json, memo, tags_json FROM hands WHERE user_id = $1 AND (memo LIKE $2 OR tags_json LIKE $3) ORDER BY created_at DESC LIMIT $4"
+            };
+            let mut qx = sqlx::query(query).bind(&user_id);
+            let qx = if keyword.is_empty() {
+                qx.bind(limit)
+            } else {
+                let like = format!("%{}%", keyword);
+                qx.bind(&like).bind(&like).bind(limit)
+            };
+            let rows = match qx.fetch_all(p).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to list hands");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            rows.iter().filter_map(row_to_hand_summary).collect()
         }
     };
 
-    let summaries = rows
-        .into_iter()
-        .filter_map(|row| {
-            let id: String = row.try_get("id").ok()?;
-            let created_at: String = row.try_get("created_at").ok()?;
-            let result_json: String = row.try_get("result_json").ok()?;
-            let memo: Option<String> = row.try_get("memo").ok().flatten();
-            let tags_json: Option<String> = row.try_get("tags_json").ok().flatten();
-
-            let id = Uuid::parse_str(&id).ok()?;
-            let created_at = OffsetDateTime::parse(
-                &created_at,
-                &time::format_description::well_known::Rfc3339,
-            )
-            .ok()?;
-            let result: CalcResult = serde_json::from_str(&result_json).ok()?;
-            let tags: Vec<String> = tags_json
-                .as_deref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default();
-
-            Some(HandSummary {
-                id,
-                created_at,
-                display_hand_points: result.display_hand_points.clone(),
-                total_to_winner: result.totals.total_to_winner,
-                memo,
-                tags,
-            })
-        })
-        .collect::<Vec<_>>();
-
     (StatusCode::OK, Json(summaries)).into_response()
 }
+
+const GET_HAND_SQLITE: &str = r#"
+SELECT id, user_id, created_at, rule_set_id, calc_version, fact_json, result_json, memo, tags_json
+FROM hands
+WHERE user_id = ? AND id = ? LIMIT 1
+"#;
+const GET_HAND_PG: &str = r#"
+SELECT id, user_id, created_at, rule_set_id, calc_version, fact_json, result_json, memo, tags_json
+FROM hands
+WHERE user_id = $1 AND id = $2 LIMIT 1
+"#;
 
 pub async fn get_hand(
     State(state): State<AppState>,
@@ -196,78 +288,78 @@ pub async fn get_hand(
 ) -> impl IntoResponse {
     let user_id = user_id_from_headers(&headers);
 
-    let row = match sqlx::query(
-        r#"
-SELECT id, user_id, created_at, rule_set_id, calc_version, fact_json, result_json, memo, tags_json
-FROM hands
-WHERE user_id = ?
-  AND id = ?
-LIMIT 1
-"#,
+    let not_found = (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "not_found" })),
     )
-    .bind(&user_id)
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!(error = ?e, "failed to get hand");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "db_error" })),
-            )
-                .into_response();
+        .into_response();
+
+    match &state.db {
+        crate::state::DbPool::Any(p) => {
+            let row = match sqlx::query(GET_HAND_SQLITE)
+                .bind(&user_id)
+                .bind(&id)
+                .fetch_optional(p)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to get hand");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            let Some(row) = row else {
+                return not_found;
+            };
+            match row_to_hand_record(&row) {
+                Some(record) => (StatusCode::OK, Json(record)).into_response(),
+                None => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": "parse_error" })),
+                )
+                    .into_response(),
+            }
         }
-    };
-
-    let Some(row) = row else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "not_found" })),
-        )
-            .into_response();
-    };
-
-    let id: String = row.try_get("id").unwrap();
-    let row_user_id: String = row.try_get("user_id").unwrap();
-    let created_at: String = row.try_get("created_at").unwrap();
-    let rule_set_id: String = row.try_get("rule_set_id").unwrap();
-    let calc_version: String = row.try_get("calc_version").unwrap();
-    let fact_json: String = row.try_get("fact_json").unwrap();
-    let result_json: String = row.try_get("result_json").unwrap();
-    let memo: Option<String> = row.try_get("memo").ok().flatten();
-    let tags_json: Option<String> = row.try_get("tags_json").ok().flatten();
-
-    let id = Uuid::parse_str(&id).unwrap();
-    let created_at = OffsetDateTime::parse(
-        &created_at,
-        &time::format_description::well_known::Rfc3339,
-    )
-    .unwrap();
-    let fact: Fact = serde_json::from_str(&fact_json).unwrap();
-    let result: CalcResult = serde_json::from_str(&result_json).unwrap();
-    let tags: Vec<String> = tags_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok())
-        .unwrap_or_default();
-
-    (
-        StatusCode::OK,
-        Json(HandRecord {
-            id,
-            user_id: row_user_id,
-            created_at,
-            rule_set_id,
-            calc_version,
-            fact,
-            result,
-            memo,
-            tags,
-        }),
-    )
-        .into_response()
+        crate::state::DbPool::Pg(p) => {
+            let row = match sqlx::query(GET_HAND_PG)
+                .bind(&user_id)
+                .bind(&id)
+                .fetch_optional(p)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to get hand");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            let Some(row) = row else {
+                return not_found;
+            };
+            match row_to_hand_record(&row) {
+                Some(record) => (StatusCode::OK, Json(record)).into_response(),
+                None => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": "parse_error" })),
+                )
+                    .into_response(),
+            }
+        }
+    }
 }
+
+const RECALC_SQLITE: &str =
+    "SELECT calc_version, fact_json, result_json FROM hands WHERE user_id = ? AND id = ? LIMIT 1";
+const RECALC_PG: &str =
+    "SELECT calc_version, fact_json, result_json FROM hands WHERE user_id = $1 AND id = $2 LIMIT 1";
 
 pub async fn recalc_hand(
     State(state): State<AppState>,
@@ -276,42 +368,68 @@ pub async fn recalc_hand(
 ) -> impl IntoResponse {
     let user_id = user_id_from_headers(&headers);
 
-    let row = match sqlx::query(
-        r#"
-SELECT calc_version, fact_json, result_json
-FROM hands
-WHERE user_id = ?
-  AND id = ?
-LIMIT 1
-"#,
-    )
-    .bind(&user_id)
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!(error = ?e, "failed to get hand for recalc");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "db_error" })),
+    let (stored_calc_version, fact_json, result_json) = match &state.db {
+        crate::state::DbPool::Any(p) => {
+            let row = match sqlx::query(RECALC_SQLITE)
+                .bind(&user_id)
+                .bind(&id)
+                .fetch_optional(p)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to get hand for recalc");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            let Some(row) = row else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "not_found" })),
+                )
+                    .into_response();
+            };
+            (
+                row.try_get("calc_version").unwrap(),
+                row.try_get("fact_json").unwrap(),
+                row.try_get("result_json").unwrap(),
             )
-                .into_response();
+        }
+        crate::state::DbPool::Pg(p) => {
+            let row = match sqlx::query(RECALC_PG)
+                .bind(&user_id)
+                .bind(&id)
+                .fetch_optional(p)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = ?e, "failed to get hand for recalc");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "db_error" })),
+                    )
+                        .into_response();
+                }
+            };
+            let Some(row) = row else {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "not_found" })),
+                )
+                    .into_response();
+            };
+            (
+                row.try_get("calc_version").unwrap(),
+                row.try_get("fact_json").unwrap(),
+                row.try_get("result_json").unwrap(),
+            )
         }
     };
-
-    let Some(row) = row else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "not_found" })),
-        )
-            .into_response();
-    };
-
-    let stored_calc_version: String = row.try_get("calc_version").unwrap();
-    let fact_json: String = row.try_get("fact_json").unwrap();
-    let result_json: String = row.try_get("result_json").unwrap();
 
     let fact: Fact = match serde_json::from_str(&fact_json) {
         Ok(v) => v,
