@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGetHand, apiRecalcHand } from "@/lib/api";
 import type { HandRecord, RecalcResponse } from "@/lib/types";
@@ -8,15 +8,16 @@ import type { HandRecord, RecalcResponse } from "@/lib/types";
 export default function HistoryDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
   const [item, setItem] = useState<HandRecord | null>(null);
   const [recalc, setRecalc] = useState<RecalcResponse | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   async function load() {
     setMessage(null);
-    const res = await apiGetHand(params.id);
+    const res = await apiGetHand(id);
     if (!res.ok) {
       setMessage(res.message ?? "取得に失敗しました");
       return;
@@ -26,7 +27,7 @@ export default function HistoryDetailPage({
 
   async function runRecalc() {
     setMessage(null);
-    const res = await apiRecalcHand(params.id);
+    const res = await apiRecalcHand(id);
     if (!res.ok) {
       setMessage(res.message ?? "再計算に失敗しました");
       return;
@@ -37,7 +38,7 @@ export default function HistoryDetailPage({
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id]);
+  }, [id]);
 
   return (
     <div className="space-y-4">
@@ -55,7 +56,11 @@ export default function HistoryDetailPage({
       ) : (
         <div className="space-y-4">
           <section className="rounded-2xl border border-zinc-200 bg-white p-4">
-            <div className="text-sm text-zinc-600">結果</div>
+            <div className="text-sm text-zinc-600">
+              {item.result.display_hand_points.includes("/")
+                ? "結果（親から/子から）"
+                : "結果"}
+            </div>
             <div className="mt-1 text-3xl font-semibold">
               {item.result.display_hand_points}
             </div>

@@ -76,7 +76,6 @@ pub fn validate_fact(fact: Fact) -> Result<ValidatedFact, Vec<ValidationError>> 
         errors.push(ValidationError::FuInvalid);
     }
 
-    // u8なので負値は来ないが、将来の型変更に備えて残す（エラーメッセージの統一目的）。
     if fact.honba > 100 {
         errors.push(ValidationError::HonbaInvalid);
     }
