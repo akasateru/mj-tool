@@ -6,8 +6,23 @@ import type { CalcResponse, Fact, ValidationError } from "@/lib/types";
 
 const FU_PRESETS = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
 
+const selectClassName =
+  "cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-white px-3 py-2 pr-10 text-sm transition-colors hover:border-zinc-300 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200";
+const selectStyle = {
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23717171'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+  backgroundRepeat: "no-repeat" as const,
+  backgroundPosition: "right 0.5rem center",
+  backgroundSize: "1.25rem",
+};
+
 function errorText(e: ValidationError) {
   return e.detail;
+}
+
+function parseNonNegative(s: string): number {
+  if (s === "") return 0;
+  const n = parseInt(s, 10);
+  return isNaN(n) || n < 0 ? 0 : n;
 }
 
 export default function CalcPage() {
@@ -20,6 +35,10 @@ export default function CalcPage() {
     riichi_sticks: 0,
     discarder: "opponent1",
   });
+
+  // 本場・供託は文字列で保持し、0 のまま入力が変わるようにする
+  const [honbaInput, setHonbaInput] = useState("0");
+  const [riichiInput, setRiichiInput] = useState("0");
 
   const [calc, setCalc] = useState<CalcResponse | null>(null);
   const [errors, setErrors] = useState<ValidationError[]>([]);
@@ -168,29 +187,20 @@ export default function CalcPage() {
 
           <label className="block">
             <div className="text-sm font-medium">符</div>
-            <div className="mt-2 flex gap-2">
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2"
-                type="number"
-                value={fact.fu}
-                onChange={(e) =>
-                  setFact((f) => ({ ...f, fu: Number(e.target.value) }))
-                }
-              />
-              <select
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-                value={fact.fu}
-                onChange={(e) =>
-                  setFact((f) => ({ ...f, fu: Number(e.target.value) }))
-                }
-              >
-                {FU_PRESETS.map((fu) => (
-                  <option key={fu} value={fu}>
-                    {fu}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              className={`mt-2 w-full ${selectClassName}`}
+              style={selectStyle}
+              value={fact.fu}
+              onChange={(e) =>
+                setFact((f) => ({ ...f, fu: Number(e.target.value) }))
+              }
+            >
+              {FU_PRESETS.map((fu) => (
+                <option key={fu} value={fu}>
+                  {fu}符
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="block">
@@ -199,10 +209,12 @@ export default function CalcPage() {
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2"
               type="number"
               min={0}
-              value={fact.honba}
-              onChange={(e) =>
-                setFact((f) => ({ ...f, honba: Number(e.target.value) }))
-              }
+              value={honbaInput}
+              onChange={(e) => {
+                const v = e.target.value;
+                setHonbaInput(v);
+                setFact((f) => ({ ...f, honba: parseNonNegative(v) }));
+              }}
             />
             <div className="mt-1 text-xs text-zinc-500">
               1本場=+300（ツモは各家+100、ロンは放銃者+300）
@@ -215,10 +227,12 @@ export default function CalcPage() {
               className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2"
               type="number"
               min={0}
-              value={fact.riichi_sticks}
-              onChange={(e) =>
-                setFact((f) => ({ ...f, riichi_sticks: Number(e.target.value) }))
-              }
+              value={riichiInput}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRiichiInput(v);
+                setFact((f) => ({ ...f, riichi_sticks: parseNonNegative(v) }));
+              }}
             />
             <div className="mt-1 text-xs text-zinc-500">
               1本=+1000（アガり者が総取り）
@@ -229,7 +243,8 @@ export default function CalcPage() {
             <div>
               <div className="text-sm font-medium">放銃者（ロンのみ）</div>
               <select
-                className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2"
+                className={`mt-2 w-full ${selectClassName}`}
+                style={selectStyle}
                 value={fact.discarder ?? "opponent1"}
                 onChange={(e) =>
                   setFact((f) => ({
