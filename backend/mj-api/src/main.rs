@@ -11,7 +11,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use db::init_db;
-use handlers::{calc, create_hand, get_hand, health, list_hands, recalc_hand};
+use handlers::{analyze_hand, calc, create_hand, get_hand, health, list_hands, recalc_hand};
 use state::{AppState, DbPool, DEFAULT_DB_URL};
 
 #[tokio::main]
@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/analyze-hand", post(analyze_hand))
         .route("/calc", post(calc))
         .route("/hands", post(create_hand).get(list_hands))
         .route("/hands/{id}", get(get_hand))

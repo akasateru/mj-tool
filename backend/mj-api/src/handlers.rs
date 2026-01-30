@@ -4,7 +4,10 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use mj_domain::{calc_score, validate_fact, CalcResult, Fact, RULESET_V1};
+use mj_domain::{
+    analyze::{analyze_hand as domain_analyze_hand, AnalyzeHandRequest, AnalyzeHandError},
+    calc_score, validate_fact, CalcResult, Fact, RULESET_V1,
+};
 use sqlx::any::AnyRow;
 use sqlx::Row;
 use time::OffsetDateTime;
@@ -80,6 +83,26 @@ fn row_to_hand_record(row: &AnyRow) -> Option<HandRecord> {
 
 pub async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "ok": true }))
+}
+
+/// 手牌文字列から翻・符・役を算出する（牌リスト → Fact 候補）。
+pub async fn analyze_hand(Json(req): Json<AnalyzeHandRequest>) -> axum::response::Response {
+    match domain_analyze_hand(&req) {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(AnalyzeHandError::ParseFailed(msg)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "parse_failed", "detail": msg })),
+        )
+            .into_response(),
+        Err(AnalyzeHandError::NotWinningHand) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": "not_winning_hand",
+                "detail": "和了形ではありません（14枚の有効な手牌を入力してください）"
+            })),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn calc(
