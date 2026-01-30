@@ -1,5 +1,6 @@
+use base64::Engine;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -99,6 +100,245 @@ pub async fn analyze_hand(Json(req): Json<AnalyzeHandRequest>) -> axum::response
             Json(serde_json::json!({
                 "error": "not_winning_hand",
                 "detail": "和了形ではありません（14枚の有効な手牌を入力してください）"
+            })),
+        )
+            .into_response(),
+    }
+}
+
+/// 画像から手牌文字列を取得（OpenAI Vision）。API キー未設定時は Err。
+async fn image_to_hand_string_via_vision(
+    api_key: &str,
+    image_bytes: &[u8],
+    media_type: &str,
+) -> Result<String, String> {
+    let base64_str = base64::engine::general_purpose::STANDARD.encode(image_bytes);
+    let data_url = format!("data:{};base64,{}", media_type, base64_str);
+
+    let prompt = concat!(
+        "This image shows a mahjong (麻雀) hand that is ready to win (和了形). ",
+        "Return ONLY the hand in riichi-tools format: digits and letters, e.g. 123m456p789s111z22z. ",
+        "Use m/p/s for 萬/筒/索, 1-7z for 東南西北白發中. ",
+        "For 槓: (k1m) = closed kan 1m, (k4z1) = open kan 4z from player 1. ",
+        "No explanation, no markdown, just the hand string."
+    );
+
+    let body = serde_json::json!({
+        "model": "gpt-4o-mini",
+        "messages": [{
+            "role": "user",
+            "content": [
+                { "type": "text", "text": prompt },
+                { "type": "image_url", "image_url": { "url": data_url } }
+            ]
+        }],
+        "max_tokens": 200
+    });
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("vision request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        // 429 / insufficient_quota のときは分かりやすいメッセージに
+        let msg = if status.as_u16() == 429 {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                let code = v.get("error").and_then(|e| e.get("code")).and_then(|c| c.as_str());
+                let typ = v.get("error").and_then(|e| e.get("type")).and_then(|t| t.as_str());
+                if code == Some("insufficient_quota") || typ == Some("insufficient_quota") {
+                    "OpenAI の利用枠を超えました。プラン・請求情報を確認するか、しばらく時間をおいて再試行してください。".to_string()
+                } else {
+                    format!("vision API error {}: {}", status, text)
+                }
+            } else {
+                format!("vision API error {}: {}", status, text)
+            }
+        } else {
+            format!("vision API error {}: {}", status, text)
+        };
+        return Err(msg);
+    }
+
+    let json: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| format!("vision response parse failed: {}", e))?;
+
+    let content = json
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| "vision response missing content".to_string())?;
+
+    // 手牌らしい部分を抽出。読み取れた範囲で必ず何か返す（後で手動修正する想定）
+    let allowed = |c: char| c.is_ascii_digit() || matches!(c, 'm' | 'p' | 's' | 'z' | '(' | ')' | 'k');
+    let trimmed = content.trim().trim_matches(|c: char| c == '`' || c == '"');
+    let hand = trimmed
+        .lines()
+        .find_map(|line| {
+            let collected: String = line.chars().filter(|c| allowed(*c)).collect();
+            if collected.len() >= 10 && collected.chars().any(|c| c == 'm' || c == 'p' || c == 's' || c == 'z') {
+                Some(collected)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            let collected: String = trimmed.chars().filter(|c| allowed(*c)).collect();
+            if collected.len() >= 10 && collected.chars().any(|c| c == 'm' || c == 'p' || c == 's' || c == 'z') {
+                Some(collected)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            // 短くても m/p/s/z を含む行やトークンがあれば返す
+            let collected: String = trimmed.chars().filter(|c| allowed(*c)).collect();
+            if collected.chars().any(|c| c == 'm' || c == 'p' || c == 's' || c == 'z') {
+                Some(collected)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| {
+            // それでもなければ元テキストの1行目（前後の空白・記号除去）を返す
+            trimmed
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| trimmed.to_string())
+        });
+
+    Ok(hand)
+}
+
+/// 画像から翻・符・役を算出する（画像 → Vision → 手牌文字列 → 既存解析）。
+pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response {
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(k) if !k.trim().is_empty() => k,
+        _ => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "vision_unavailable",
+                    "detail": "画像解析には OPENAI_API_KEY の設定が必要です"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let mut image_data: Option<Vec<u8>> = None;
+    let mut media_type = "image/jpeg".to_string();
+    let mut riichi = false;
+    let mut tsumo = true;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "image" {
+            let ct = field.content_type().map(|s| s.to_string()).unwrap_or_else(|| "image/jpeg".to_string());
+            if let Ok(data) = field.bytes().await {
+                if data.len() > 5 * 1024 * 1024 {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({
+                            "error": "image_too_large",
+                            "detail": "画像は 5MB 以内にしてください"
+                        })),
+                    )
+                        .into_response();
+                }
+                media_type = ct;
+                image_data = Some(data.to_vec());
+            }
+        } else if name == "riichi" {
+            if let Ok(s) = field.text().await {
+                riichi = s.eq_ignore_ascii_case("true") || s == "1";
+            }
+        } else if name == "tsumo" {
+            if let Ok(s) = field.text().await {
+                tsumo = s.eq_ignore_ascii_case("true") || s != "0";
+            }
+        }
+    }
+
+    let image_bytes = match image_data {
+        Some(b) => b,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "missing_image",
+                    "detail": "画像ファイル (field: image) を送信してください"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let hand_string = match image_to_hand_string_via_vision(
+        &api_key,
+        &image_bytes,
+        &media_type,
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "error": "vision_failed",
+                    "detail": e
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let req = AnalyzeHandRequest {
+        hand_string: hand_string.clone(),
+        riichi,
+        tsumo,
+        prevalent_wind: None,
+        seat_wind: None,
+    };
+
+    // 読み取れた手牌は常に返す。解析に失敗しても hand_string を返して手動修正できるようにする
+    match domain_analyze_hand(&req) {
+        Ok(res) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "hand_string": hand_string,
+                "han": res.han,
+                "fu": res.fu,
+                "yaku": res.yaku
+            })),
+        )
+            .into_response(),
+        Err(AnalyzeHandError::ParseFailed(msg)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "hand_string": hand_string,
+                "error": msg
+            })),
+        )
+            .into_response(),
+        Err(AnalyzeHandError::NotWinningHand) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "hand_string": hand_string,
+                "error": "和了形ではありません。手牌を修正して「解析」を押してください。"
             })),
         )
             .into_response(),
