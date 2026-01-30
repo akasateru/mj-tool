@@ -45,7 +45,7 @@ pub struct AnalyzeHandResponse {
 pub enum AnalyzeHandError {
     #[error("手牌のパースに失敗しました: {0}")]
     ParseFailed(String),
-    #[error("和了形ではありません（14枚の有効な手牌を入力してください）")]
+    #[error("和了形ではありません。例: 123m456p789s111z22z（1-9m/p/s=萬/筒/索、1-7z=字牌）。14枚で和了形にしてください。")]
     NotWinningHand,
 }
 

@@ -99,7 +99,7 @@ pub async fn analyze_hand(Json(req): Json<AnalyzeHandRequest>) -> axum::response
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(serde_json::json!({
                 "error": "not_winning_hand",
-                "detail": "和了形ではありません（14枚の有効な手牌を入力してください）"
+                "detail": "和了形ではありません。例: 123m456p789s111z22z（1-9m/p/s=萬/筒/索、1-7z=字牌）。14枚で和了形にしてください。"
             })),
         )
             .into_response(),
@@ -314,7 +314,7 @@ pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response
         seat_wind: None,
     };
 
-    // 読み取れた手牌は常に返す。解析に失敗しても hand_string を返して手動修正できるようにする
+    // 画像から解析は、Vision で何か返ってきたら通す。解析に失敗しても hand_string だけ返して手動修正させる
     match domain_analyze_hand(&req) {
         Ok(res) => (
             StatusCode::OK,
@@ -326,19 +326,10 @@ pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response
             })),
         )
             .into_response(),
-        Err(AnalyzeHandError::ParseFailed(msg)) => (
+        Err(_) => (
             StatusCode::OK,
             Json(serde_json::json!({
-                "hand_string": hand_string,
-                "error": msg
-            })),
-        )
-            .into_response(),
-        Err(AnalyzeHandError::NotWinningHand) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "hand_string": hand_string,
-                "error": "和了形ではありません。手牌を修正して「解析」を押してください。"
+                "hand_string": hand_string
             })),
         )
             .into_response(),
