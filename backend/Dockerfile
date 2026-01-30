@@ -1,4 +1,4 @@
-# Render などで mj-api をデプロイする用。DB は Supabase（DATABASE_URL）を想定。
+# Render で mj-api をデプロイ
 FROM rust:1.93-bookworm AS builder
 WORKDIR /app
 

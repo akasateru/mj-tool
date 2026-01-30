@@ -1,6 +1,5 @@
 use crate::state::DbPool;
 
-/// MVP用（SQLite/Postgres両対応の“最小”スキーマ）。
 /// Supabase本番スキーマ（RLS/uuid/jsonb等）は supabase/migrations を参照。
 pub async fn init_db(db: &DbPool) -> anyhow::Result<()> {
     const SQL: &str = r#"
