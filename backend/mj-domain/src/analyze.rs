@@ -3,6 +3,7 @@
 //! riichi-tools-rs を利用し、手牌文字列と局状態から翻・符・役リストを算出する。
 //! 画像認識の前段として、手入力の牌リストから Fact の候補（han/fu）を出す用途を想定。
 
+use riichi_tools_rs::riichi::riichi_error::RiichiError;
 use riichi_tools_rs::riichi::table::Table;
 use riichi_tools_rs::riichi::yaku::Yaku;
 use serde::{Deserialize, Serialize};
@@ -71,8 +72,13 @@ pub fn analyze_hand(req: &AnalyzeHandRequest) -> Result<AnalyzeHandResponse, Ana
     );
 
     let map: serde_json::Map<String, serde_json::Value> = params.into_iter().collect();
-    let mut table = Table::from_map(&map).map_err(|e| {
-        AnalyzeHandError::ParseFailed(format!("{:?}", e))
+    let mut table = Table::from_map(&map).map_err(|e: RiichiError| {
+        let msg = if e.code == 100 {
+            "手牌の形式が正しくありません。例: 123m456p789s111z22z（1-9m/p/s=萬/筒/索、1-7z=字牌）。14枚で和了形にしてください。".to_string()
+        } else {
+            format!("{} : {}", e.code, e.message)
+        };
+        AnalyzeHandError::ParseFailed(msg)
     })?;
 
     let (yaku_list, score) = table.yaku().ok_or(AnalyzeHandError::NotWinningHand)?;
