@@ -26,13 +26,20 @@
 | **Dockerfile Path** | `Dockerfile`（Root が `backend` なのでそのまま） |
 | **Instance Type** | **Free**（無料枠。15分でスリープする） |
 
-4. **Environment Variables** で次を追加する。
+4. **Environment Variables** で次を追加し、**Render から Supabase にアクセスできるようにする**。
 
 | Key | Value |
 |-----|-------|
 | **DATABASE_URL** | Supabase の Postgres 接続文字列（URI） |
 
+   - Supabase ダッシュボード: **Settings** → **Database** → **Connection string** の **URI** をコピー。
+   - `<YOUR-PASSWORD>` をプロジェクト作成時の DB パスワードに置き換える。
+   - **Transaction mode**（ポート 6543）の URI を使う（サーバーレス・短命プロセス向けで Render に適している）。
+   - Supabase は接続元 IP の制限をデフォルトで行わないため、Render からそのまま接続できる。
+
 5. **Create Web Service** で作成する。
+
+**既存の Web Service に DB を繋ぐ場合**: Dashboard で該当サービスを開く → **Environment** → **Add Environment Variable** で `DATABASE_URL` を追加 → **Save Changes** で再デプロイが走る。
 
 ---
 

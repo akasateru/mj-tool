@@ -28,3 +28,4 @@
 | ドキュメント | 内容 |
 |-------------|------|
 | [麻雀ルール](./reference/mahjong-rules.md) | このアプリで採用している麻雀ルールの固定仕様 |
+| [Supabase ベストプラクティス](./reference/supabase-best-practices.md) | Supabase 利用時のセキュリティ・接続・マイグレーションのポイント |

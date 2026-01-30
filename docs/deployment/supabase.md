@@ -1,6 +1,6 @@
 # Supabase にデプロイする手順
 
-このプロジェクトでは **DB を Supabase（Postgres）** で運用します。フロントは Vercel、API は Render から Supabase に接続する構成です。
+このプロジェクトでは **DB を Supabase（Postgres）** で運用。フロントは Vercel、API は Render から Supabase に接続する構成です。**マイグレーションは Supabase CLI の `db push` で反映する**方法を前提に記載しています。
 
 ---
 
@@ -20,38 +20,38 @@
 
 ---
 
-## 2. マイグレーションの適用
+## 2. Supabase CLI のインストールとログイン
 
-### 方法 A: ダッシュボードの SQL Editor
-
-1. Supabase ダッシュボードでプロジェクトを開く。
-2. 左メニュー **SQL Editor** を開く。
-3. **New query** を選択し、`supabase/migrations/0001_init.sql` の内容を貼り付ける。
-4. **Run** で実行する。
-
-### 方法 B: Supabase CLI（ローカルでリンクして push）
+このリポジトリのルートには `package.json` があり、Supabase CLI が devDependency で入っています。
 
 ```bash
-# CLI のインストール（未導入の場合）
-# npm: npm i -g supabase
-# または https://supabase.com/docs/guides/cli を参照
-
-# ログイン
-supabase login
-
-# プロジェクトとリンク（ダッシュボードの Settings → General の Reference ID を使用）
 cd /path/to/2026_tech_challenge
-supabase link --project-ref <PROJECT_REF>
-
-# マイグレーションをリモートに反映
-supabase db push
+npm install   # 未実行なら
+npx supabase login   # ブラウザが開き、Supabase にログインする
 ```
 
-初回は `supabase/migrations/0001_init.sql` が適用されます。
+**注意**: `supabase login` は **ターミナル（TTY）で実行**してください。IDE 内の実行環境ではブラウザが開かず失敗することがあります。その場合は `SUPABASE_ACCESS_TOKEN` をダッシュボードで発行し、`npx supabase login --token <TOKEN>` でログインできます。
 
 ---
 
-## 3. 接続情報の取得
+## 3. プロジェクトをリンクしてマイグレーションを push
+
+1. ダッシュボードの **Settings** → **General** で **Reference ID**（プロジェクト ID）をコピーする。
+2. リポジトリのルートで次を実行する。
+
+```bash
+cd /path/to/2026_tech_challenge   # プロジェクトルート
+npx supabase link --project-ref <PROJECT_REF>   # <PROJECT_REF> を Reference ID に置き換え
+npx supabase db push
+```
+
+初回は `supabase/migrations/0001_init.sql` がリモートに適用されます。今後マイグレーションを追加した場合も、`supabase/migrations/` にファイルを置いて `supabase db push` で反映できます。
+
+**代替（CLI を使わない場合）**: ダッシュボードの **SQL Editor** を開き、`supabase/migrations/0001_init.sql` の内容を貼り付けて **Run** しても同じスキーマを適用できます。履歴管理や追加マイグレーションは CLI の方が扱いやすいです。
+
+---
+
+## 4. 接続情報の取得
 
 1. ダッシュボードで **Settings** → **Database** を開く。
 2. **Connection string** の **URI** をコピーする。
@@ -71,7 +71,7 @@ postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-1.pooler.supabase
 
 ---
 
-## 4. 動作確認
+## 5. 動作確認
 
 - **API（Render）**: `DATABASE_URL` に上記 URI を設定して再デプロイし、`/health` や `/hands` にアクセスして確認。
 - **フロント（Vercel）**: `NEXT_PUBLIC_API_BASE_URL` に Render の URL を設定していれば、本番 DB 経由で履歴などが表示されます。
@@ -87,3 +87,7 @@ postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-ap-northeast-1.pooler.supabase
 | **API からの接続** | Render の API は **service_role** 相当の接続で DB にアクセスする想定。RLS をバイパスする場合はサービスロールキー／接続文字列を利用し、アプリ側で user_id を検証する必要があります。 |
 
 現在のバックエンド（mj-api）は、起動時に `init_db` で自前の `hands` スキーマも作成します。Supabase 側のマイグレーション（`user_id uuid references auth.users(id)` など）と揃えたい場合は、バックエンドのスキーマや `user_id` の扱いを合わせて調整してください。
+
+---
+
+より詳しい運用のポイントは [Supabase ベストプラクティス](../reference/supabase-best-practices.md) を参照してください。

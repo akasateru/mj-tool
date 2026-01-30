@@ -48,6 +48,7 @@ coverage/
 
 # Supabase ローカル
 .supabase/
+supabase/.temp/
 
 # IDE / エディタ
 .idea/

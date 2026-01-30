@@ -1,0 +1,7 @@
+{
+  "name": "2026_tech_challenge",
+  "private": true,
+  "devDependencies": {
+    "supabase": "^2"
+  }
+}
