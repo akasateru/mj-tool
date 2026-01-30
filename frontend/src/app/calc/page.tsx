@@ -8,6 +8,14 @@ import type {
   Fact,
   ValidationError,
 } from "@/lib/types";
+import { HandArea } from "@/components/HandArea";
+import { TilePool } from "@/components/TilePool";
+import {
+  handTilesToHandString,
+  parseHandString,
+  sortHandTiles,
+  type TileCode,
+} from "@/lib/tiles";
 
 const FU_PRESETS = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
 const HAN_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
@@ -54,7 +62,8 @@ export default function CalcPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const [handString, setHandString] = useState("");
+  const [handTiles, setHandTiles] = useState<TileCode[]>([]);
+  const handString = useMemo(() => handTilesToHandString(handTiles), [handTiles]);
   const [analyzeRiichi, setAnalyzeRiichi] = useState(false);
   const [analyzeTsumo, setAnalyzeTsumo] = useState(true);
   const [analyzeResult, setAnalyzeResult] = useState<AnalyzeHandResponse | null>(null);
@@ -119,9 +128,10 @@ export default function CalcPage() {
         setImageError(res.message ?? "画像解析に失敗しました");
         return;
       }
-      // 読み取った手牌は常に牌リスト入力欄にセット（手動修正用）
-      setHandString(res.data.hand_string ?? "");
-      if (res.data.han != null && res.data.fu != null && !res.data.error) {
+      // 画像から解析は何か返ってきたら通す。手牌をセットし、解析できたときだけ翻・符を反映
+      setHandTiles(parseHandString(res.data.hand_string ?? ""));
+      setImageError(null);
+      if (res.data.han != null && res.data.fu != null) {
         const han = res.data.han;
         const fu = res.data.fu;
         setAnalyzeResult({
@@ -137,9 +147,8 @@ export default function CalcPage() {
           discarder: analyzeTsumo ? null : (f.discarder ?? "opponent1"),
         }));
         setAnalyzeError(null);
-      } else if (res.data.error) {
+      } else {
         setAnalyzeResult(null);
-        setImageError(res.data.error);
       }
     } finally {
       setImageAnalyzing(false);
@@ -193,25 +202,74 @@ export default function CalcPage() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-4">
         <h1 className="text-lg font-semibold">点数計算（手入力）</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          翻・符はユーザー入力、または下の「牌リストから解析」で自動算出。
+          翻・符はユーザー入力、または下の「画像から解析」「牌リストから解析」で自動算出。
         </p>
+
+        <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
+          <div className="text-sm font-medium">画像から解析</div>
+          <p className="mt-1 text-xs text-zinc-500">
+            手牌の写真をアップロードすると、AI（OpenAI Vision）で牌を読み取り、翻・符・役を算出します。スマホではカメラでその場で撮影も可能です。下のリーチ・ツモにチェックを入れてから実行してください。
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              className="text-sm file:mr-2 file:rounded-xl file:border file:border-zinc-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:hover:bg-zinc-50"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                setImageFile(f ?? null);
+                setImageError(null);
+              }}
+            />
+            <button
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              onClick={onAnalyzeImage}
+              disabled={imageAnalyzing || !imageFile}
+            >
+              {imageAnalyzing ? "解析中…" : "画像から解析"}
+            </button>
+          </div>
+          {imageError && (
+            <div className="mt-2 text-sm text-red-600">{imageError}</div>
+          )}
+        </div>
 
         <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
           <div className="text-sm font-medium">牌リストから解析</div>
           <p className="mt-1 text-xs text-zinc-500">
-            手牌を riichi-tools 形式で入力（例: 123m456p789s111z22z）。1-9m/p/s=萬/筒/索、1-7z=東南西北白發中。
+            牌プールの牌をクリックまたはドラッグで手牌に追加。手牌内のドラッグで並べ替え、×ボタンで削除。14枚で解析できます。
           </p>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            槓も反映可能。暗槓は <span className="font-mono">(k1m)</span>、明槓は <span className="font-mono">(k4z1)</span>（1=上家,2=対面,3=下家）。例: 111m456p789s22z(k1z)
-          </p>
-          <div className="mt-2 flex flex-wrap items-end gap-2">
-            <input
-              className="min-w-[200px] flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-mono"
-              placeholder="例: 123m456p789s111z22z"
-              value={handString}
-              onChange={(e) => setHandString(e.target.value)}
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-medium text-zinc-500">手牌（14枚）</span>
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+                onClick={() => setHandTiles([])}
+                disabled={handTiles.length === 0}
+              >
+                手牌をリセット
+              </button>
+            </div>
+            <HandArea
+            handTiles={handTiles}
+            onHandChange={(next) => setHandTiles(sortHandTiles(next))}
+          />
+          </div>
+          <div className="mt-3">
+            <div className="text-xs font-medium text-zinc-500 mb-1">牌プール（ドラッグで追加）</div>
+            <TilePool
+              handTiles={handTiles}
+              onAddTile={(code) => {
+                if (handTiles.length >= 14) return;
+                if (handTiles.filter((t) => t === code).length >= 4) return;
+                setHandTiles((prev) => sortHandTiles([...prev, code]));
+              }}
             />
-            <label className="flex items-center gap-1.5 text-sm">
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="flex items-center gap-1.5 text-sm shrink-0">
               <input
                 type="checkbox"
                 checked={analyzeRiichi}
@@ -219,7 +277,7 @@ export default function CalcPage() {
               />
               リーチ
             </label>
-            <label className="flex items-center gap-1.5 text-sm">
+            <label className="flex items-center gap-1.5 text-sm shrink-0">
               <input
                 type="checkbox"
                 checked={analyzeTsumo}
@@ -228,13 +286,18 @@ export default function CalcPage() {
               ツモ
             </label>
             <button
-              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 shrink-0"
               onClick={onAnalyze}
-              disabled={analyzing || !handString.trim()}
+              disabled={analyzing || handTiles.length !== 14}
             >
               {analyzing ? "解析中…" : "解析"}
             </button>
           </div>
+          {handString && (
+            <p className="mt-2 text-xs text-zinc-500 font-mono truncate" title={handString}>
+              文字列: {handString}
+            </p>
+          )}
           <div className="mt-3 border-t border-zinc-200 pt-3">
             <div className="text-xs font-medium text-zinc-500">解析結果</div>
             {analyzeError && (
@@ -259,35 +322,6 @@ export default function CalcPage() {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
-          <div className="text-sm font-medium">画像から解析</div>
-          <p className="mt-1 text-xs text-zinc-500">
-            手牌の写真をアップロードすると、AI（OpenAI Vision）で牌を読み取り、翻・符・役を算出します。上記のリーチ・ツモにチェックを入れてから実行してください。
-          </p>
-          <div className="mt-2 flex flex-wrap items-end gap-2">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="text-sm file:mr-2 file:rounded-xl file:border file:border-zinc-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:hover:bg-zinc-50"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                setImageFile(f ?? null);
-                setImageError(null);
-              }}
-            />
-            <button
-              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
-              onClick={onAnalyzeImage}
-              disabled={imageAnalyzing || !imageFile}
-            >
-              {imageAnalyzing ? "解析中…" : "画像から解析"}
-            </button>
-          </div>
-          {imageError && (
-            <div className="mt-2 text-sm text-red-600">{imageError}</div>
-          )}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
