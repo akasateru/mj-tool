@@ -223,6 +223,14 @@ async fn image_to_hand_string_via_vision(
 }
 
 /// 画像から翻・符・役を算出する（画像 → Vision → 手牌文字列 → 既存解析）。
+///
+/// 処理の流れ:
+/// 1. multipart から field 名 "image" のファイルを受け取る（ここで取れないと「画像ファイル (field: image) を送信してください」）
+/// 2. 5MB 超なら BAD_REQUEST
+/// 3. OpenAI Vision API で手牌文字列を取得
+/// 4. 既存の手牌解析で翻・符・役を算出（失敗しても hand_string は返す）
+///
+/// ボディサイズ: main.rs でこのルートのみ DefaultBodyLimit::max(6MB) を指定（axum デフォルト 2MB だと大きい画像で失敗する）
 pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response {
     let api_key = match std::env::var("OPENAI_API_KEY") {
         Ok(k) if !k.trim().is_empty() => k,

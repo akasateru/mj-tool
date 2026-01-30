@@ -3,6 +3,7 @@ mod handlers;
 mod models;
 mod state;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use sqlx::any::AnyPoolOptions;
@@ -80,7 +81,10 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/analyze-hand", post(analyze_hand))
-        .route("/analyze-image", post(analyze_image))
+        .route(
+            "/analyze-image",
+            post(analyze_image).layer(DefaultBodyLimit::max(6 * 1024 * 1024)), // 6MB（ハンドラ内で5MBチェック）
+        )
         .route("/calc", post(calc))
         .route("/hands", post(create_hand).get(list_hands))
         .route("/hands/{id}", get(get_hand))
