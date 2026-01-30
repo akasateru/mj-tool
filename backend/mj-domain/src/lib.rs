@@ -3,6 +3,9 @@
 //! - **Fact**: 観測された事実（入力経路に依存しない）
 //! - **Validation**: 整合性チェック
 //! - **Pure calc**: 副作用ゼロの点数計算
+//! - **analyze**: 手牌文字列から翻・符・役を算出（牌リスト → Fact 候補）
+
+pub mod analyze;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -24,7 +27,7 @@ pub enum WinnerRole {
     NonDealer,
 }
 
-/// Ron時の放銃者。MVPでは「3人の対面」を区別するだけで十分。
+/// ロンの時の放銃者。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Discarder {
@@ -33,7 +36,7 @@ pub enum Discarder {
     Opponent3,
 }
 
-/// 入力（Fact）。UI/画像補助など入力経路と独立。
+/// 入力（Fact）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fact {
     pub winner_role: WinnerRole,
@@ -109,12 +112,12 @@ pub enum LimitKind {
     Haneman,
     Baiman,
     Sanbaiman,
-    Yakuman, // MVPでは入力手段がないが、将来拡張用に保持
+    Yakuman,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScoreBreakdown {
-    /// 符・翻から算出した（上限適用後の）基礎点
+    /// 符・翻から算出した基礎点
     pub base_points: u32,
     pub limit: LimitKind,
     /// 上限適用前の基礎点
@@ -153,10 +156,8 @@ pub enum Participant {
 pub struct CalcResult {
     pub rule_set_id: String,
     pub breakdown: ScoreBreakdown,
-    /// 表示用の基本打点（ロン: "7700", 子ツモ: "2000/3900" など）
     pub display_hand_points: String,
     pub payments: Vec<PaymentLine>,
-    /// 参加者ごとの合計差分（+は受け取り、-は支払い）
     pub deltas: Vec<(Participant, i32)>,
     pub totals: Totals,
 }
@@ -169,7 +170,6 @@ pub struct Totals {
     pub total_to_winner: i32,
 }
 
-/// MVP固定ルール（仕様書通り）
 #[derive(Debug, Clone, Copy)]
 pub struct RuleSet {
     pub rule_set_id: &'static str,
@@ -283,23 +283,25 @@ pub fn calc_score(valid: &ValidatedFact, rules: RuleSet) -> CalcResult {
 }
 
 fn calc_breakdown_from_fu_han(fu: u16, han: u8) -> ScoreBreakdown {
-    let raw_base_points = (fu as u32) * 2u32.pow((han as u32) + 2);
-
-    // 仕様：数え役満なし（13翻以上は三倍満止まり）
-    let (limit, base_points) = if han >= 13 {
-        (LimitKind::Sanbaiman, 6000)
+    // 仕様：数え役満なし。
+    let (limit, base_points, raw_base_points) = if han >= 13 {
+        (LimitKind::Sanbaiman, 6000, 6000u32)
     } else if han >= 11 {
-        (LimitKind::Sanbaiman, 6000)
+        (LimitKind::Sanbaiman, 6000, 6000u32)
     } else if han >= 8 {
-        (LimitKind::Baiman, 4000)
+        (LimitKind::Baiman, 4000, 4000u32)
     } else if han >= 6 {
-        (LimitKind::Haneman, 3000)
+        (LimitKind::Haneman, 3000, 3000u32)
     } else if han == 5 {
-        (LimitKind::Mangan, 2000)
-    } else if raw_base_points >= 2000 {
-        (LimitKind::Mangan, 2000)
+        (LimitKind::Mangan, 2000, 2000u32)
     } else {
-        (LimitKind::Regular, raw_base_points)
+        let exp = (han as u32).saturating_add(2);
+        let raw = (fu as u32).saturating_mul(2u32.saturating_pow(exp.min(31)));
+        if raw >= 2000 {
+            (LimitKind::Mangan, 2000, 2000u32)
+        } else {
+            (LimitKind::Regular, raw, raw)
+        }
     };
 
     ScoreBreakdown {
