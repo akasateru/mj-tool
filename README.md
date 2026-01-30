@@ -24,7 +24,7 @@ cd frontend && npm run dev           # 別ターミナルで
 
 | 役割 | サービス | 手順 |
 |------|----------|------|
-| Frontend | Vercel | リポジトリ連携、`frontend/` をルートに設定 |
+| Frontend | Vercel | [docs/deployment/vercel.md](docs/deployment/vercel.md) |
 | Backend | Render | [docs/deployment/render.md](docs/deployment/render.md) |
 | DB | Supabase | [docs/deployment/supabase.md](docs/deployment/supabase.md) |
 

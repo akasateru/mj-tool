@@ -1,29 +1,30 @@
 # Render でバックエンドをデプロイする手順
 
-バックエンド（Rust API）を Render の Web Service としてデプロイし、**DB は Supabase** を使う構成です。
+Rust APIを Render の Web Service としてデプロイ。
+DBはSupabase(PostgreSQL)を使用。
 
 ---
 
 ## 1. 前提
 
 - **DB**: Supabase の Postgres。[Supabase のデプロイ手順](./supabase.md) を参照し、**Settings → Database** で「Connection string」の **URI** をコピーしておく。
-- **フロント**: Vercel など別ホスト。デプロイ後に `NEXT_PUBLIC_API_BASE_URL` に Render の URL を設定する。
+- **フロント**: デプロイ後、Vercelの環境変数に `NEXT_PUBLIC_API_BASE_URL` を設定。値は、Render の URL を設定。
 
 ---
 
 ## 2. Render で Web Service を作成
 
 1. [Render](https://render.com) にログインし、**Dashboard** → **New +** → **Web Service** を選択。
-2. このリポジトリ（GitHub / GitLab）を接続する。
-3. 次のように設定する。
+2. このリポジトリ（GitHub / GitLab）を接続。
+3. 次のように設定。
 
 | 項目 | 値 |
 |------|-----|
-| **Name** | 任意（例: `mj-api`） |
-| **Region** | 希望のリージョン |
+| **Name** | `mj-api` |
+| **Region** | 任意 |
 | **Root Directory** | `backend` |
 | **Runtime** | **Docker** |
-| **Dockerfile Path** | `Dockerfile`（Root が `backend` なのでそのまま） |
+| **Dockerfile Path** | `Dockerfile` |
 | **Instance Type** | **Free**（無料枠。15分でスリープする） |
 
 4. **Environment Variables** で次を追加し、**Render から Supabase にアクセスできるようにする**。
@@ -33,9 +34,8 @@
 | **DATABASE_URL** | Supabase の Postgres 接続文字列（URI） |
 
    - Supabase ダッシュボード: **Settings** → **Database** → **Connection string** の **URI** をコピー。
-   - `<YOUR-PASSWORD>` をプロジェクト作成時の DB パスワードに置き換える。
-   - **Transaction mode**（ポート 6543）の URI を使う（サーバーレス・短命プロセス向けで Render に適している）。
-   - Supabase は接続元 IP の制限をデフォルトで行わないため、Render からそのまま接続できる。
+   - `<YOUR-PASSWORD>` をプロジェクト作成時の DB パスワードに置き換え。
+   - **Transaction mode**（ポート 6543）の URI を使う。
 
 5. **Create Web Service** で作成する。
 
@@ -53,7 +53,6 @@
 ## 4. 注意（無料枠）
 
 - **15 分間アクセスがないとスリープ**する。次のリクエストで復帰するまで数十秒〜約1分かかることがある。
-- 常時稼働させたい場合は有料プラン（Starter など）を検討する。
 
 ---
 
@@ -65,5 +64,3 @@
 | Runtime | Docker |
 | 環境変数 | `DATABASE_URL` = Supabase の接続文字列 |
 | フロント | Vercel の `NEXT_PUBLIC_API_BASE_URL` に Render の URL を設定 |
-
-フロントのデプロイ手順は README などを参照してください。

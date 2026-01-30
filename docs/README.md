@@ -8,10 +8,9 @@
 
 | ドキュメント | 内容 |
 |-------------|------|
+| [Vercel（フロントエンド）](./deployment/vercel.md) | Next.js を Vercel にデプロイする手順 |
 | [Render（バックエンド）](./deployment/render.md) | Rust API を Render の Web Service としてデプロイする手順 |
 | [Supabase（DB）](./deployment/supabase.md) | Supabase プロジェクト作成・マイグレーション・接続情報の取得 |
-
-フロントは Vercel にデプロイする想定です（Vercel とリポジトリを連携し、`frontend/` をルートに設定）。
 
 ---
 
@@ -27,5 +26,4 @@
 
 | ドキュメント | 内容 |
 |-------------|------|
-| [麻雀ルール](./reference/mahjong-rules.md) | このアプリで採用している麻雀ルールの固定仕様 |
-| [Supabase ベストプラクティス](./reference/supabase-best-practices.md) | Supabase 利用時のセキュリティ・接続・マイグレーションのポイント |
+| [麻雀ルール](./reference/mahjong-rules.md) | 採用している麻雀ルールの仕様 |
