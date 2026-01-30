@@ -88,3 +88,19 @@ export type RecalcResponse = {
   current_result: CalcResult;
 };
 
+/** 手牌解析リクエスト（牌リスト → 翻・符・役） */
+export type AnalyzeHandRequest = {
+  hand_string: string;
+  riichi?: boolean;
+  tsumo?: boolean;
+  prevalent_wind?: number;
+  seat_wind?: number;
+};
+
+/** 手牌解析レスポンス */
+export type AnalyzeHandResponse = {
+  han: number;
+  fu: number;
+  yaku: string[];
+};
+

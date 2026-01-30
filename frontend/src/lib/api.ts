@@ -1,4 +1,6 @@
 import type {
+  AnalyzeHandRequest,
+  AnalyzeHandResponse,
   CalcResponse,
   Fact,
   HandRecord,
@@ -85,6 +87,13 @@ export async function apiGetHand(id: string) {
 export async function apiRecalcHand(id: string) {
   return fetchJson<RecalcResponse>(`/hands/${encodeURIComponent(id)}/recalc`, {
     method: "POST",
+  });
+}
+
+export async function apiAnalyzeHand(req: AnalyzeHandRequest) {
+  return fetchJson<AnalyzeHandResponse>("/analyze-hand", {
+    method: "POST",
+    body: JSON.stringify(req),
   });
 }
 

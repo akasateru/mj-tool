@@ -1,8 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { apiCalc, apiCreateHand } from "@/lib/api";
-import type { CalcResponse, Fact, ValidationError } from "@/lib/types";
+import { apiAnalyzeHand, apiCalc, apiCreateHand } from "@/lib/api";
+import type {
+  AnalyzeHandResponse,
+  CalcResponse,
+  Fact,
+  ValidationError,
+} from "@/lib/types";
 
 const FU_PRESETS = [20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 110];
 const HAN_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as const;
@@ -48,6 +53,53 @@ export default function CalcPage() {
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [handString, setHandString] = useState("");
+  const [analyzeRiichi, setAnalyzeRiichi] = useState(false);
+  const [analyzeTsumo, setAnalyzeTsumo] = useState(true);
+  const [analyzeResult, setAnalyzeResult] = useState<AnalyzeHandResponse | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  async function onAnalyze() {
+    setAnalyzeError(null);
+    setAnalyzeResult(null);
+    setAnalyzing(true);
+    try {
+      const res = await apiAnalyzeHand({
+        hand_string: handString.trim(),
+        riichi: analyzeRiichi,
+        tsumo: analyzeTsumo,
+      });
+      if (!res.ok) {
+        let errMsg = "解析に失敗しました";
+        if (res.message) {
+          try {
+            const body = JSON.parse(res.message) as { detail?: string };
+            errMsg = body.detail ?? res.message;
+          } catch {
+            errMsg = res.message;
+          }
+        }
+        // API が JSON を返さない場合などで "{}" になるのを避ける
+        if (!errMsg || errMsg === "{}" || errMsg.trim() === "") {
+          errMsg = "解析に失敗しました";
+        }
+        setAnalyzeError(errMsg);
+        return;
+      }
+      setAnalyzeResult(res.data);
+      setFact((f) => ({
+        ...f,
+        han: res.data.han,
+        fu: res.data.fu,
+        win_method: analyzeTsumo ? "tsumo" : "ron",
+        discarder: analyzeTsumo ? null : (f.discarder ?? "opponent1"),
+      }));
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   async function onCalc() {
     setMessage(null);
@@ -96,8 +148,73 @@ export default function CalcPage() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-4">
         <h1 className="text-lg font-semibold">点数計算（手入力）</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          翻・符はユーザー入力。役判定/符計算はMVP対象外です。
+          翻・符はユーザー入力、または下の「牌リストから解析」で自動算出。
         </p>
+
+        <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
+          <div className="text-sm font-medium">牌リストから解析</div>
+          <p className="mt-1 text-xs text-zinc-500">
+            手牌を riichi-tools 形式で入力（例: 123m456p789s111z22z）。1-9m/p/s=萬/筒/索、1-7z=東南西北白發中。
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            槓も反映可能。暗槓は <span className="font-mono">(k1m)</span>、明槓は <span className="font-mono">(k4z1)</span>（1=上家,2=対面,3=下家）。例: 111m456p789s22z(k1z)
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <input
+              className="min-w-[200px] flex-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-mono"
+              placeholder="例: 123m456p789s111z22z"
+              value={handString}
+              onChange={(e) => setHandString(e.target.value)}
+            />
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={analyzeRiichi}
+                onChange={(e) => setAnalyzeRiichi(e.target.checked)}
+              />
+              リーチ
+            </label>
+            <label className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={analyzeTsumo}
+                onChange={(e) => setAnalyzeTsumo(e.target.checked)}
+              />
+              ツモ
+            </label>
+            <button
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              onClick={onAnalyze}
+              disabled={analyzing || !handString.trim()}
+            >
+              {analyzing ? "解析中…" : "解析"}
+            </button>
+          </div>
+          <div className="mt-3 border-t border-zinc-200 pt-3">
+            <div className="text-xs font-medium text-zinc-500">解析結果</div>
+            {analyzeError && (
+              <div className="mt-1 text-sm text-red-600">{analyzeError}</div>
+            )}
+            {analyzeResult && !analyzeError && (
+              <div className="mt-1 text-sm text-zinc-700">
+                <span className="font-medium">{analyzeResult.han}翻</span>
+                <span className="mx-1">/</span>
+                <span className="font-medium">{analyzeResult.fu}符</span>
+                {analyzeResult.yaku.length > 0 && (
+                  <span className="ml-2">
+                    （{analyzeResult.yaku.join("・")}）
+                  </span>
+                )}
+                <span className="ml-2 text-zinc-500">→ 計算フォームに反映済み</span>
+              </div>
+            )}
+            {!analyzeError && !analyzeResult && !analyzing && (
+              <div className="mt-1 text-xs text-zinc-400">
+                「解析」を押すと、ここに翻・符・役名が表示されます。
+              </div>
+            )}
+          </div>
+        </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
