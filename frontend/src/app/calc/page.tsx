@@ -208,13 +208,12 @@ export default function CalcPage() {
         <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
           <div className="text-sm font-medium">画像から解析</div>
           <p className="mt-1 text-xs text-zinc-500">
-            手牌の写真をアップロードすると、AI（OpenAI Vision）で牌を読み取り、翻・符・役を算出します。スマホではカメラでその場で撮影も可能です。下のリーチ・ツモにチェックを入れてから実行してください。
+            手牌の写真をアップロードすると、AI（OpenAI Vision）で牌を読み取り、翻・符・役を算出します。下のリーチ・ツモにチェックを入れてから実行してください。
           </p>
           <div className="mt-2 flex flex-wrap items-end gap-2">
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              capture="environment"
               className="text-sm file:mr-2 file:rounded-xl file:border file:border-zinc-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:hover:bg-zinc-50"
               onChange={(e) => {
                 const f = e.target.files?.[0];
