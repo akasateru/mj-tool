@@ -1,6 +1,7 @@
 import type {
   AnalyzeHandRequest,
   AnalyzeHandResponse,
+  AnalyzeImageResponse,
   CalcResponse,
   Fact,
   HandRecord,
@@ -95,5 +96,42 @@ export async function apiAnalyzeHand(req: AnalyzeHandRequest) {
     method: "POST",
     body: JSON.stringify(req),
   });
+}
+
+/** 画像から手牌を読み取り、可能なら翻・符・役を取得。読み取った手牌は常に返す（手動修正用） */
+export async function apiAnalyzeImage(
+  image: File,
+  options: { riichi?: boolean; tsumo?: boolean },
+): Promise<
+  | { ok: true; data: AnalyzeImageResponse }
+  | { ok: false; status: number; message?: string }
+> {
+  const form = new FormData();
+  form.append("image", image);
+  form.append("riichi", options.riichi ? "true" : "false");
+  form.append("tsumo", options.tsumo !== false ? "true" : "false");
+
+  const res = await fetch(`${API_BASE}/analyze-image`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+
+  if (res.ok) {
+    const data = (await res.json()) as AnalyzeImageResponse;
+    return { ok: true, data };
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    body = {};
+  }
+  const detail =
+    body && typeof body === "object" && "detail" in body && typeof (body as { detail: unknown }).detail === "string"
+      ? (body as { detail: string }).detail
+      : res.statusText || "画像解析に失敗しました";
+  return { ok: false, status: res.status, message: detail };
 }
 

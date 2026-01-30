@@ -104,3 +104,12 @@ export type AnalyzeHandResponse = {
   yaku: string[];
 };
 
+/** 画像解析レスポンス（読み取った手牌は常に返し、解析成功時のみ han/fu/yaku） */
+export type AnalyzeImageResponse = {
+  hand_string: string;
+  han?: number;
+  fu?: number;
+  yaku?: string[];
+  error?: string;
+};
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { apiAnalyzeHand, apiCalc, apiCreateHand } from "@/lib/api";
+import { apiAnalyzeHand, apiAnalyzeImage, apiCalc, apiCreateHand } from "@/lib/api";
 import type {
   AnalyzeHandResponse,
   CalcResponse,
@@ -61,6 +61,10 @@ export default function CalcPage() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageAnalyzing, setImageAnalyzing] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
   async function onAnalyze() {
     setAnalyzeError(null);
     setAnalyzeResult(null);
@@ -98,6 +102,47 @@ export default function CalcPage() {
       }));
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function onAnalyzeImage() {
+    if (!imageFile) return;
+    setImageError(null);
+    setAnalyzeError(null);
+    setImageAnalyzing(true);
+    try {
+      const res = await apiAnalyzeImage(imageFile, {
+        riichi: analyzeRiichi,
+        tsumo: analyzeTsumo,
+      });
+      if (!res.ok) {
+        setImageError(res.message ?? "画像解析に失敗しました");
+        return;
+      }
+      // 読み取った手牌は常に牌リスト入力欄にセット（手動修正用）
+      setHandString(res.data.hand_string ?? "");
+      if (res.data.han != null && res.data.fu != null && !res.data.error) {
+        const han = res.data.han;
+        const fu = res.data.fu;
+        setAnalyzeResult({
+          han,
+          fu,
+          yaku: res.data.yaku ?? [],
+        });
+        setFact((f) => ({
+          ...f,
+          han,
+          fu,
+          win_method: analyzeTsumo ? "tsumo" : "ron",
+          discarder: analyzeTsumo ? null : (f.discarder ?? "opponent1"),
+        }));
+        setAnalyzeError(null);
+      } else if (res.data.error) {
+        setAnalyzeResult(null);
+        setImageError(res.data.error);
+      }
+    } finally {
+      setImageAnalyzing(false);
     }
   }
 
@@ -214,6 +259,35 @@ export default function CalcPage() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50 p-4">
+          <div className="text-sm font-medium">画像から解析</div>
+          <p className="mt-1 text-xs text-zinc-500">
+            手牌の写真をアップロードすると、AI（OpenAI Vision）で牌を読み取り、翻・符・役を算出します。上記のリーチ・ツモにチェックを入れてから実行してください。
+          </p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="text-sm file:mr-2 file:rounded-xl file:border file:border-zinc-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:hover:bg-zinc-50"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                setImageFile(f ?? null);
+                setImageError(null);
+              }}
+            />
+            <button
+              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
+              onClick={onAnalyzeImage}
+              disabled={imageAnalyzing || !imageFile}
+            >
+              {imageAnalyzing ? "解析中…" : "画像から解析"}
+            </button>
+          </div>
+          {imageError && (
+            <div className="mt-2 text-sm text-red-600">{imageError}</div>
+          )}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
