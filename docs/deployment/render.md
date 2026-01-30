@@ -6,7 +6,7 @@
 
 ## 1. 前提
 
-- **DB**: Supabase の Postgres。Supabase ダッシュボードの **Settings → Database** で「Connection string」の **URI** をコピーしておく。
+- **DB**: Supabase の Postgres。[Supabase のデプロイ手順](./supabase.md) を参照し、**Settings → Database** で「Connection string」の **URI** をコピーしておく。
 - **フロント**: Vercel など別ホスト。デプロイ後に `NEXT_PUBLIC_API_BASE_URL` に Render の URL を設定する。
 
 ---
