@@ -213,7 +213,7 @@ export default function CalcPage() {
           <div className="mt-2 flex flex-wrap items-end gap-2">
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/heic"
               className="text-sm file:mr-2 file:rounded-xl file:border file:border-zinc-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:hover:bg-zinc-50"
               onChange={(e) => {
                 const f = e.target.files?.[0];

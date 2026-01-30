@@ -83,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/analyze-hand", post(analyze_hand))
         .route(
             "/analyze-image",
-            post(analyze_image).layer(DefaultBodyLimit::max(6 * 1024 * 1024)), // 6MB（ハンドラ内で5MBチェック）
+            post(analyze_image).layer(DefaultBodyLimit::max(15 * 1024 * 1024)), // 15MB（iPhone等の大きい写真用、ハンドラ内で10MBチェック）
         )
         .route("/calc", post(calc))
         .route("/hands", post(create_hand).get(list_hands))

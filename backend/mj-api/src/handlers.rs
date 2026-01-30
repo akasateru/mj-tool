@@ -230,7 +230,7 @@ async fn image_to_hand_string_via_vision(
 /// 3. OpenAI Vision API で手牌文字列を取得
 /// 4. 既存の手牌解析で翻・符・役を算出（失敗しても hand_string は返す）
 ///
-/// ボディサイズ: main.rs でこのルートのみ DefaultBodyLimit::max(6MB) を指定（axum デフォルト 2MB だと大きい画像で失敗する）
+/// ボディサイズ: main.rs でこのルートのみ DefaultBodyLimit::max(15MB)（iPhone 等の大きい写真用）
 pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response {
     let api_key = match std::env::var("OPENAI_API_KEY") {
         Ok(k) if !k.trim().is_empty() => k,
@@ -287,12 +287,23 @@ pub async fn analyze_image(mut multipart: Multipart) -> axum::response::Response
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
                     "error": "missing_image",
-                    "detail": "画像ファイル (field: image) を送信してください"
+                    "detail": "画像ファイル（フィールド名: image）を送信してください。大きい写真の場合は 10MB 以内に縮小してください。"
                 })),
             )
                 .into_response();
         }
     };
+
+    if media_type.to_lowercase().contains("heic") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "heic_unsupported",
+                "detail": "iPhoneのHEIC形式は未対応です。設定→カメラ→フォーマットで「互換性の高い形式」にするとJPEGで保存されます。"
+            })),
+        )
+            .into_response();
+    }
 
     let hand_string = match image_to_hand_string_via_vision(
         &api_key,
